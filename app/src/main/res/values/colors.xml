@@ -1,0 +1,27 @@
+<resources>
+    <!-- Material3 Color Palette -->
+    <color name="purple_80">#FFD0BCFF</color>
+    <color name="purple_grey_80">#FFCCC2DC</color>
+    <color name="pink_80">#FFEFB8C8</color>
+    <color name="purple_40">#FF6650A4</color>
+    <color name="purple_grey_40">#FF625B71</color>
+    <color name="pink_40">#FF7D5260</color>
+
+    <!-- App specific colors -->
+    <color name="status_connected">#FF4CAF50</color>
+    <color name="status_disconnected">#FFF44336</color>
+
+    <!-- Order status colors -->
+    <color name="pending_bg">#FFFFE0B2</color>
+    <color name="pending_text">#FFE65100</color>
+    <color name="waiting_bg">#FFE1F5FE</color>
+    <color name="waiting_text">#FF01579B</color>
+    <color name="shipping_bg">#FFF3E5F5</color>
+    <color name="shipping_text">#FF4A148C</color>
+    <color name="completed_bg">#FFE8F5E8</color>
+    <color name="completed_text">#FF1B5E20</color>
+    <color name="cancelled_bg">#FFFFEBEE</color>
+    <color name="cancelled_text">#FFC62828</color>
+    <color name="default_bg">#FFF5F5F5</color>
+    <color name="default_text">#FF424242</color>
+</resources>

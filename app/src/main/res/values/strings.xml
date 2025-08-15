@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Order Monitor</string>
+    <string name="connection_status_connected">Đã kết nối</string>
+    <string name="connection_status_disconnected">Mất kết nối</string>
+    <string name="order_tracking_title">Theo dõi đơn hàng</string>
+    <string name="realtime_updates">Cập nhật realtime</string>
+    <string name="waiting_for_data">Đang chờ dữ liệu...</string>
+    <string name="connection_lost">Mất kết nối</string>
+    <string name="retry">Thử lại</string>
+    <string name="reconnect">Kết nối lại</string>
+    <string name="total_orders">Tổng số đơn hàng: %d</string>
+    <string name="last_updated">Cập nhật lần cuối: %s</string>
+    <string name="customer">KH: %s</string>
+    <string name="phone">SĐT: %s</string>
+    <string name="total_amount">Tổng tiền:</string>
+    <string name="discounted_amount">Sau giảm:</string>
+    <string name="payment_info">Thông tin thanh toán:</string>
+    <string name="expand_products">và %d sản phẩm khác... (nhấn để xem)</string>
+    <string name="collapse">Thu gọn</string>
+</resources>

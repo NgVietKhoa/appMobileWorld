@@ -1,0 +1,17 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Dark Theme -->
+    <style name="Theme.RealtimeOrderMonitor" parent="Base.Theme.RealtimeOrderMonitor">
+        <item name="colorPrimary">@color/purple_80</item>
+        <item name="colorOnPrimary">@color/purple_40</item>
+        <item name="colorPrimaryContainer">@color/purple_40</item>
+        <item name="colorOnPrimaryContainer">@color/purple_80</item>
+
+        <item name="colorSecondary">@color/purple_grey_80</item>
+        <item name="colorOnSecondary">@color/purple_grey_40</item>
+        <item name="colorSecondaryContainer">@color/purple_grey_40</item>
+        <item name="colorOnSecondaryContainer">@color/purple_grey_80</item>
+
+        <item name="android:statusBarColor">?attr/colorPrimaryContainer</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
