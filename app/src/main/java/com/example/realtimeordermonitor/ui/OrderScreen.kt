@@ -1,8 +1,6 @@
 package com.example.realtimeordermonitor.ui
 
-import android.util.Log
 import androidx.compose.animation.*
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,11 +10,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,17 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.realtimeordermonitor.data.*
-import com.example.realtimeordermonitor.utils.*
 import com.example.realtimeordermonitor.viewmodel.OrderViewModel
-import com.example.realtimeordermonitor.utils.toVNDCurrency
-import ua.naiksoftware.stomp.BuildConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,54 +31,32 @@ fun OrderScreen(viewModel: OrderViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
 
-    // Auto-scroll to top when new orders arrive
     LaunchedEffect(uiState.orders.size) {
         if (uiState.orders.isNotEmpty() && listState.firstVisibleItemIndex <= 2) {
             listState.animateScrollToItem(0)
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Enhanced Header with connection status
-        HeaderCard(
-            uiState = uiState,
-            onReconnect = viewModel::reconnect,
-            onClearOrders = viewModel::clearOrders
-        )
+    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        // Compact Header
+        CompactHeader(uiState, viewModel::reconnect, viewModel::clearOrders)
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Statistics Cards
-//        StatsRow(uiState = uiState)
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Orders list or empty state
+        // Orders list
         if (uiState.orders.isEmpty()) {
-            EmptyState(
-                isConnected = uiState.isConnected,
-                onReconnect = viewModel::reconnect
-            )
+            EmptyState(uiState.isConnected, viewModel::reconnect)
         } else {
             LazyColumn(
                 state = listState,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 itemsIndexed(
                     items = uiState.orders,
                     key = { _, order -> order.id }
-                ) { index, order ->
-                    ImprovedOrderCard(
-                        order = order,
-                        customer = uiState.getCustomerForOrder(order),
-                        voucherInfo = uiState.getVoucherForOrder(order.id),
-                        index = index
-                    )
+                ) { _, order ->
+                    CompactOrderCard(order, uiState.getCustomerForOrder(order), uiState)
                 }
             }
         }
@@ -97,156 +64,68 @@ fun OrderScreen(viewModel: OrderViewModel) {
 }
 
 @Composable
-private fun StatsRow(uiState: OrderUiState) { //This Composable is not used locally
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // Order count card
-        Card(
-            modifier = Modifier.weight(1f),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = uiState.orders.size.toString(),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = "Đơn hàng",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
-
-        // Revenue card
-        Card(
-            modifier = Modifier.weight(1f),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val totalRevenue = uiState.orders
-                    .filter { it.trangThai == 3 }
-                    .sumOf { it.tongTienSauGiam }
-
-                Text(
-                    text = if (totalRevenue > 0) totalRevenue.toVNDShort() else "0",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "Doanh thu",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
-        }
-
-        // Active customers card
-        if (uiState.khachHangInfo.isNotEmpty()) {
-            Card(
-                modifier = Modifier.weight(1f),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = uiState.khachHangInfo.size.toString(),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
-                    Text(
-                        text = "Khách hàng",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HeaderCard(
+private fun CompactHeader(
     uiState: OrderUiState,
     onReconnect: () -> Unit,
     onClearOrders: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
+        initialValue = 0.4f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
+            animation = tween(1500),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulse"
     )
 
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
-                Text(
-                    text = "Theo dõi đơn hàng",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Cập nhật realtime",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (uiState.lastUpdated > 0) {
-                    Text(
-                        text = "Cập nhật lần cuối: ${uiState.lastUpdated.toTimeString()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Status indicator
                 Box(
                     modifier = Modifier
-                        .size(12.dp)
+                        .size(10.dp)
                         .clip(RoundedCornerShape(50))
                         .background(
-                            if (uiState.isConnected) Color.Green.copy(alpha = pulseAlpha)
-                            else Color.Red.copy(alpha = pulseAlpha)
+                            if (uiState.isConnected) Color(0xFF4CAF50).copy(alpha = pulseAlpha)
+                            else Color(0xFFE53E3E).copy(alpha = pulseAlpha)
                         )
                 )
-                IconButton(onClick = onReconnect) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Làm mới")
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column {
+                    Text(
+                        "Theo dõi đơn hàng",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (uiState.lastUpdated > 0) {
+                        Text(
+                            "${uiState.lastUpdated.toTimeString()}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-                IconButton(onClick = onClearOrders) {
-                    Icon(Icons.Default.Clear, contentDescription = "Xóa đơn hàng")
+            }
+
+            Row {
+                IconButton(onClick = onReconnect, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(18.dp))
+                }
+                IconButton(onClick = onClearOrders, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -254,659 +133,114 @@ private fun HeaderCard(
 }
 
 @Composable
-private fun EmptyState(
-    isConnected: Boolean,
-    onReconnect: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = if (isConnected) "Không có đơn hàng nào" else "Không có kết nối",
-            style = MaterialTheme.typography.titleMedium
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        if (!isConnected) {
-            Button(onClick = onReconnect) {
-                Text("Thử kết nối lại")
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ImprovedOrderCard(
-    order: HoaDonDetailResponse,
-    customer: KhachHang?,
-    voucherInfo: VoucherOrderUpdate?,
-    index: Int
-) {
+private fun CompactOrderCard(order: HoaDonDetailResponse, customer: KhachHang?, uiState: OrderUiState) {
     var expanded by remember { mutableStateOf(false) }
     val rotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(durationMillis = 300),
-        label = "arrow rotation"
+        animationSpec = tween(250), label = "rotation"
     )
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { expanded = !expanded }
-            .padding(horizontal = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(android.graphics.Color.parseColor(order.getStatusColor()))
-                .copy(alpha = 0.1f)
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            // Header với mã đơn hàng và trạng thái
-            OrderHeader(order = order, rotation = rotation)
+    val voucherInfo = uiState.getVoucherForOrder(order.id)
+    val (_, discountAmount) = order.getEffectiveVoucherInfo(voucherInfo)
+    val calculatedTotal = order.getCalculatedTotal()
 
-            AnimatedVisibility(
-                visible = expanded,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // 1. Thông tin khách hàng
-                    CustomerInfoCard(customer = customer, order = order)
-
-                    // 2. Thông tin phiếu giảm giá (nếu có)
-                    if (voucherInfo != null || order.hasVoucher()) {
-                        VoucherInfoCard(voucherInfo = voucherInfo, order = order)
-                    }
-
-                    // 3. Danh sách sản phẩm
-                    ProductListCard(products = order.sanPhamChiTiet)
-
-                    // 4. Tổng tiền và thanh toán
-                    PaymentSummaryCard(order = order)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OrderHeader(order: HoaDonDetailResponse, rotation: Float) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = order.maHoaDon,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            StatusChip(status = order.trangThaiText)
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = order.getFormattedDate(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = order.tongTienSauGiam.toVNDCurrency(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                if (order.hasDiscount()) {
-                    Text(
-                        text = "Tiết kiệm ${order.tienGiamGia.toVNDCurrency()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Red
-                    )
-                }
-            }
-            Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = "Toggle expand",
-                modifier = Modifier
-                    .size(24.dp)
-                    .rotate(rotation)
-            )
-        }
-    }
-}
-
-// OrderScreen.kt - Enhanced CustomerInfoCard with debugging
-
-@Composable
-private fun CustomerInfoCard(customer: KhachHang?, order: HoaDonDetailResponse) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = "Customer",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = "Thông tin khách hàng",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Enhanced debug logging
-            Log.d("CustomerInfoCard", "=== CUSTOMER CARD DEBUG ===")
-            Log.d("CustomerInfoCard", "Order: ${order.maHoaDon}")
-            Log.d("CustomerInfoCard", "Order customer name: '${order.tenKhachHang}'")
-            Log.d("CustomerInfoCard", "Order customer phone: '${order.soDienThoaiKhachHang}'")
-            Log.d("CustomerInfoCard", "Order customer email: '${order.emailKhachHang}'")
-
-            if (customer != null) {
-                Log.d("CustomerInfoCard", "Found customer: ID=${customer.id}, Name='${customer.ten}', Phone='${customer.soDienThoai}', Email='${customer.email}'")
-            } else {
-                Log.d("CustomerInfoCard", "NO CUSTOMER FOUND for order: ${order.maHoaDon}")
-            }
-
-            // Hiển thị thông tin khách hàng
-            when {
-                // Có thông tin customer đầy đủ từ WebSocket
-                customer?.isValidForOrderDisplay() == true -> {
-                    CustomerFullInfoNew(customer = customer)
-
-                    // Debug info để kiểm tra
-                    if (BuildConfig.DEBUG) {
-                        Text(
-                            text = "🔍 Debug: Found via WebSocket (ID: ${customer.id})",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Green,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-
-                // Chỉ có thông tin cơ bản từ order
-                order.hasCustomerInfo() -> {
-                    CustomerBasicInfo(order = order)
-
-                    // Debug info
-                    if (BuildConfig.DEBUG) {
-                        Text(
-                            text = "🔍 Debug: Using order info only",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-
-                // Khách lẻ
-                else -> {
-                    CustomerGuestInfo()
-
-                    // Debug info
-                    if (BuildConfig.DEBUG) {
-                        Text(
-                            text = "🔍 Debug: Guest customer",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Red,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CustomerFullInfoNew(customer: KhachHang) {
-    // Tên khách hàng
-    InfoRow(
-        label = "Tên khách hàng",
-        value = customer.getDisplayName(),
-        fontWeight = FontWeight.Medium
-    )
-
-    // Số điện thoại - ưu tiên từ trường trực tiếp
-    val phoneNumber = customer.soDienThoai
-    if (!phoneNumber.isNullOrEmpty()) {
-        InfoRow(
-            label = "SĐT",
-            value = phoneNumber.toFormattedPhone()
-        )
-    }
-
-    // Email - chỉ hiển thị nếu có và không có SĐT
-    val email = customer.email
-    if (!email.isNullOrEmpty() && phoneNumber.isNullOrEmpty()) {
-        InfoRow(label = "Email", value = email)
-    }
-
-    // Status badge để biết nguồn dữ liệu
     Surface(
-        color = Color.Green.copy(alpha = 0.2f),
-        shape = RoundedCornerShape(4.dp),
-        modifier = Modifier.padding(top = 4.dp)
-    ) {
-        Text(
-            text = "✓ Dữ liệu realtime",
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.Green,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-        )
-    }
-}
-
-@Composable
-private fun CustomerBasicInfo(order: HoaDonDetailResponse) {
-    // Tên từ order
-    if (order.tenKhachHang.isNotEmpty() && order.tenKhachHang != "Khách lẻ") {
-        InfoRow(
-            label = "Tên khách hàng",
-            value = order.tenKhachHang,
-            fontWeight = FontWeight.Medium
-        )
-    }
-
-    // SĐT từ order
-    if (order.soDienThoaiKhachHang.isNotEmpty()) {
-        InfoRow(
-            label = "SĐT",
-            value = order.soDienThoaiKhachHang.toFormattedPhone()
-        )
-    }
-
-    // Email từ order (chỉ nếu không có SĐT)
-    if (order.emailKhachHang.isNotEmpty() && order.soDienThoaiKhachHang.isEmpty()) {
-        InfoRow(label = "Email", value = order.emailKhachHang)
-    }
-
-    // Địa chỉ từ order (chỉ nếu có)
-    if (order.diaChiKhachHang.isNotEmpty()) {
-        InfoRow(
-            label = "Địa chỉ",
-            value = order.diaChiKhachHang,
-            multiline = true
-        )
-    }
-}
-
-@Composable
-private fun CustomerGuestInfo() {
-    Text(
-        text = "Khách lẻ",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        fontStyle = FontStyle.Italic
-    )
-}
-
-// Tối ưu: Helper extension cho HoaDonDetailResponse
-fun HoaDonDetailResponse.hasCustomerInfo(): Boolean {
-    return (tenKhachHang.isNotEmpty() && tenKhachHang != "Khách lẻ") ||
-            soDienThoaiKhachHang.isNotEmpty() ||
-            emailKhachHang.isNotEmpty()
-}
-
-@Composable
-private fun VoucherInfoCard(voucherInfo: VoucherOrderUpdate?, order: HoaDonDetailResponse) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "Phiếu giảm giá",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Ưu tiên thông tin từ voucherInfo, fallback về order
-            val voucherCode = voucherInfo?.maPhieu?.takeIf { it.isNotEmpty() } ?: order.maPhieuGiamGia
-            val voucherName = voucherInfo?.tenPhieu?.takeIf { it.isNotEmpty() } ?: ""
-            val discountAmount = if (voucherInfo?.giaTriGiam != null && voucherInfo.giaTriGiam > 0) {
-                voucherInfo.giaTriGiam.toLong()
-            } else {
-                order.tienGiamGia
-            }
-
-            InfoRow(label = "Mã phiếu", value = voucherCode, fontWeight = FontWeight.Bold)
-            if (voucherName.isNotEmpty()) {
-                InfoRow(label = "Tên phiếu", value = voucherName)
-            }
-            InfoRow(
-                label = "Giá trị giảm",
-                value = discountAmount.toVNDCurrency(),
-                valueColor = Color.Red,
-                fontWeight = FontWeight.Bold
-            )
-
-            if (voucherInfo?.trangThai == true) {
-                Surface(
-                    color = Color.Green,
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = "Đã áp dụng",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProductListCard(products: List<SanPhamChiTiet>) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ShoppingCart,
-                    contentDescription = "Products",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = "Sản phẩm (${products.size})",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            products.forEach { product ->
-                ProductItem(product = product)
-                if (product != products.last()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProductItem(product: SanPhamChiTiet) {
-    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable { expanded = !expanded },
+        shape = RoundedCornerShape(12.dp),
+        color = Color(android.graphics.Color.parseColor(order.getStatusColor())).copy(alpha = 0.06f),
+        shadowElevation = 1.dp
     ) {
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(
-                text = product.tenSanPham,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
-            )
-            if (product.getFormattedSpecs().isNotEmpty()) {
-                Text(
-                    text = product.getFormattedSpecs(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Compact header
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "SL: ${product.soLuong}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "•",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = product.giaBan.toVNDCurrency(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = order.maHoaDon.takeIf { it.isNotEmpty() }
+                                ?: "HD${order.id.toString().padStart(6, '0')}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CompactStatusChip(order.trangThaiText)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = order.getFormattedDate(),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Expand",
+                        modifier = Modifier.size(20.dp).rotate(rotation),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            if (product.imel.isNotEmpty()) {
-                Text(
-                    text = "IMEI: ${product.imel}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
+
+            // Expanded content - more compact
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(tween(200)) + expandVertically(tween(200)),
+                exit = fadeOut(tween(150)) + shrinkVertically(tween(150))
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Customer info - compact
+                    CompactCustomerInfo(customer, order)
+
+                    // Voucher info - compact
+                    if (voucherInfo?.isApplied() == true || order.hasDiscount()) {
+                        CompactVoucherInfo(voucherInfo, order)
+                    }
+
+                    // Products - compact
+                    CompactProductsList(order.sanPhamChiTiet)
+
+                    // Payment summary - compact
+                    CompactPaymentSummary(order, voucherInfo)
+                }
             }
         }
+    }
+}
 
+@Composable
+private fun MiniVoucherTag() {
+    Surface(
+        color = Color(0xFF4CAF50),
+        shape = RoundedCornerShape(8.dp)
+    ) {
         Text(
-            text = product.thanhTien.toVNDCurrency(),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            text = "PGG",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+            color = Color.White,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
 }
 
 @Composable
-private fun PaymentSummaryCard(order: HoaDonDetailResponse) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Text(
-                text = "Tổng kết thanh toán",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Tổng tiền gốc
-            InfoRow(
-                label = "Tổng tiền hàng",
-                value = order.tongTien.toVNDCurrency(),
-                valueColor = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-
-            // Phí vận chuyển (nếu có)
-            if (order.hasShippingFee()) {
-                InfoRow(
-                    label = "Phí vận chuyển",
-                    value = order.phiVanChuyen.toVNDCurrency(),
-                    valueColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-
-            // Giảm giá (nếu có)
-            if (order.hasDiscount()) {
-                InfoRow(
-                    label = "Giảm giá",
-                    value = "-${order.tienGiamGia.toVNDCurrency()}",
-                    valueColor = Color.Red,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Divider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f)
-            )
-
-            // Tổng thanh toán
-            InfoRow(
-                label = "Tổng thanh toán",
-                value = order.tongTienSauGiam.toVNDCurrency(),
-                valueColor = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-                labelStyle = MaterialTheme.typography.titleSmall,
-                valueStyle = MaterialTheme.typography.titleMedium
-            )
-
-            // Thông tin thanh toán (nếu có)
-            if (order.thanhToanInfo.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Phương thức thanh toán:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                order.thanhToanInfo.forEach { payment ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = payment.phuongThuc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Text(
-                            text = payment.soTien.toVNDCurrency(),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-            }
-
-            // Ghi chú (nếu có)
-            if (order.ghiChu.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Ghi chú:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = order.ghiChu,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoRow(
-    label: String,
-    value: String,
-    labelStyle: TextStyle = MaterialTheme.typography.bodySmall,
-    valueStyle: TextStyle = MaterialTheme.typography.bodyMedium,
-    valueColor: Color = MaterialTheme.colorScheme.onSurface,
-    fontWeight: FontWeight = FontWeight.Normal,
-    multiline: Boolean = false
-) {
-    if (multiline) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 2.dp)
-        ) {
-            Text(
-                text = label,
-                style = labelStyle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                style = valueStyle,
-                color = valueColor,
-                fontWeight = fontWeight
-            )
-        }
-    } else {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 2.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
-        ) {
-            Text(
-                text = label,
-                style = labelStyle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(0.4f)
-            )
-            Text(
-                text = value,
-                style = valueStyle,
-                color = valueColor,
-                fontWeight = fontWeight,
-                modifier = Modifier.weight(0.6f),
-                textAlign = TextAlign.End
-            )
-        }
-    }
-}
-
-@Composable
-fun StatusChip(status: String) {
-    val (backgroundColor, textColor) = when (status.lowercase()) {
+private fun CompactStatusChip(status: String) {
+    val (bgColor, textColor) = when (status.lowercase()) {
         "chờ xác nhận" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
         "chờ giao hàng" -> Color(0xFFE1F5FE) to Color(0xFF01579B)
         "đang giao" -> Color(0xFFF3E5F5) to Color(0xFF4A148C)
@@ -916,17 +250,278 @@ fun StatusChip(status: String) {
     }
 
     Surface(
-        color = backgroundColor,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.clip(RoundedCornerShape(16.dp))
+        color = bgColor,
+        shape = RoundedCornerShape(10.dp)
     ) {
         Text(
             text = status,
-            style = MaterialTheme.typography.labelMedium.copy(
-                color = textColor,
-                fontWeight = FontWeight.Medium
-            ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            color = textColor,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
     }
+}
+
+@Composable
+private fun CompactCustomerInfo(customer: KhachHang?, order: HoaDonDetailResponse) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(14.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+
+            when {
+                customer?.isValidForDisplay() == true -> {
+                    Text(
+                        "${customer.getDisplayName()} • ${customer.soDienThoai?.toFormattedPhone() ?: ""}",
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                order.hasCustomerInfo() -> {
+                    Text(
+                        "${order.tenKhachHang} • ${order.soDienThoaiKhachHang.toFormattedPhone()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                else -> {
+                    Text("Khách lẻ", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactVoucherInfo(voucherInfo: VoucherOrderUpdateResponse?, order: HoaDonDetailResponse) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFFE8F5E8).copy(alpha = 0.8f)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(modifier = Modifier.width(6.dp))
+
+                val voucherCode = if (voucherInfo?.isApplied() == true) {
+                    voucherInfo.maPhieu
+                } else {
+                    order.maPhieuGiamGia.takeIf { it.isNotEmpty() } ?: "PGG"
+                }
+
+                Text(
+                    voucherCode,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF2E7D32),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            val discountValue = if (voucherInfo?.isApplied() == true) {
+                voucherInfo.getFormattedValue()
+            } else {
+                order.tienGiamGia.toVNDCurrency()
+            }
+
+            Text(
+                "-$discountValue",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF2E7D32),
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactProductsList(products: List<SanPhamChiTiet>) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    "Sản phẩm (${products.size})",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            products.take(3).forEach { product ->
+                CompactProductItem(product)
+            }
+
+            if (products.size > 3) {
+                Text(
+                    "... và ${products.size - 3} sản phẩm khác",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactProductItem(product: SanPhamChiTiet) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                product.tenSanPham,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row {
+                Text(
+                    "SL: ${product.soLuong}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (product.getSpecs().isNotEmpty()) {
+                    Text(
+                        " • ${product.getSpecs()}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = product.thanhTien.toVNDCurrency(),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+private fun CompactPaymentSummary(order: HoaDonDetailResponse, voucherInfo: VoucherOrderUpdateResponse?) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            val calculatedTotal = order.getCalculatedTotal()
+            val (_, discountAmount) = order.getEffectiveVoucherInfo(voucherInfo)
+            val finalTotal = calculatedTotal - discountAmount
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Tổng tiền",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    calculatedTotal.toVNDCurrency(),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            if (discountAmount > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Giảm giá",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "-${discountAmount.toVNDCurrency()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFE53E3E)
+                    )
+                }
+            }
+
+            Divider(
+                modifier = Modifier.padding(vertical = 6.dp),
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Thành tiền",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    finalTotal.toVNDCurrency(),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(isConnected: Boolean, onReconnect: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = if (isConnected) "Chưa có đơn hàng mới" else "Mất kết nối",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (!isConnected) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onReconnect,
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text("Kết nối lại")
+            }
+        }
+    }
+}
+
+// Extension function for time formatting
+private fun Long.toTimeString(): String {
+    val format = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+    return format.format(java.util.Date(this))
 }
