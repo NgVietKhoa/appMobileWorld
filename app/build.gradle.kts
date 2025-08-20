@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.realtimeordermonitor"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.realtimeordermonitor"
@@ -75,6 +75,7 @@ dependencies {
 
     // Material3 theme XML
     implementation("com.google.android.material:material:1.12.0")
+    implementation(libs.foundation)
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

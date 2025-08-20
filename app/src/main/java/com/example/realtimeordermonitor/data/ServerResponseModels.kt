@@ -4,8 +4,6 @@ import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 import com.google.gson.annotations.SerializedName
 
-// ===== CUSTOMER RESPONSE MODELS =====
-
 @Parcelize
 data class KhachHangResponse(
     @SerializedName("khachHang")
@@ -18,8 +16,6 @@ data class KhachHangResponse(
     fun hasValidCustomer(): Boolean = khachHang?.isValidForOrderDisplay() == true
 }
 
-// ===== SHOPPING CART MODELS =====
-
 @Parcelize
 data class GioHangUpdateMessage(
     @SerializedName("hoaDonId")
@@ -29,8 +25,31 @@ data class GioHangUpdateMessage(
     @SerializedName("gioHang")
     val gioHang: GioHangDTO? = null,
     @SerializedName("timestamp")
-    val timestamp: String = ""
-) : Parcelable
+    val timestamp: String = "",
+    @SerializedName("idKhachHang")
+    val idKhachHang: Int? = null,
+    @SerializedName("tenKhachHang")
+    val tenKhachHang: String? = null,
+    @SerializedName("soDienThoaiKhachHang")
+    val soDienThoaiKhachHang: String? = null,
+    @SerializedName("emailKhachHang")
+    val emailKhachHang: String? = null,
+    @SerializedName("idPhieuGiamGia")
+    val idPhieuGiamGia: Int? = null,
+    @SerializedName("maPhieuGiamGia")
+    val maPhieuGiamGia: String? = null,
+    @SerializedName("soTienGiam")
+    val soTienGiam: Double? = null
+) : Parcelable {
+
+    fun toKhachHang(): KhachHang? = null
+
+    fun hasValidCustomerInfo(): Boolean = false
+
+    fun hasVoucherInfo(): Boolean {
+        return idPhieuGiamGia != null && idPhieuGiamGia > 0 && !maPhieuGiamGia.isNullOrEmpty()
+    }
+}
 
 @Parcelize
 data class GioHangDTO(
@@ -93,8 +112,6 @@ data class ChiTietGioHangDTO(
     fun getDiscountPercent(): Double = if (giaBanGoc > 0) ((giaBanGoc - giaBan) / giaBanGoc) * 100 else 0.0
 }
 
-// ===== VOUCHER ORDER UPDATE RESPONSE =====
-
 @Parcelize
 data class VoucherOrderUpdateResponse(
     @SerializedName("action")
@@ -127,5 +144,35 @@ data class VoucherOrderUpdateResponse(
         } catch (e: Exception) {
             "${giaTriGiam.toLong()} VNĐ"
         }
+    }
+}
+
+@Parcelize
+data class KhachHangUpdateMessage(
+    @SerializedName("action")
+    val action: String = "",
+    @SerializedName("khachHangId")
+    val khachHangId: Int = 0,
+    @SerializedName("ten")
+    val ten: String = "",
+    @SerializedName("soDienThoai")
+    val soDienThoai: String? = null,
+    @SerializedName("email")
+    val email: String? = null,
+    @SerializedName("timestamp")
+    val timestamp: String = ""
+) : Parcelable {
+
+    fun toKhachHang(): KhachHang {
+        return KhachHang(
+            id = khachHangId,
+            ten = ten,
+            soDienThoai = soDienThoai,
+            email = email
+        )
+    }
+
+    fun hasValidData(): Boolean {
+        return khachHangId > 0 && ten.isNotEmpty()
     }
 }

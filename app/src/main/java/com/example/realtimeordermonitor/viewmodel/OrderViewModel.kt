@@ -19,11 +19,11 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(OrderUiState())
     val uiState: StateFlow<OrderUiState> = _uiState.asStateFlow()
 
+    private val pendingCustomerUpdates = mutableMapOf<Int, KhachHang>()
+
     companion object {
         private const val TAG = "OrderViewModel"
-        private const val MAX_ORDERS = 30 // Giảm từ 50 xuống 30
-        private const val MAX_CUSTOMERS = 50 // Giảm từ 100 xuống 50
-        private const val AUTO_LINK_TIME_WINDOW = 2 * 60 * 1000L // 2 phút thay vì 3 phút
+        private const val MAX_ORDERS = 30
     }
 
     init {
@@ -44,6 +44,7 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
                 webSocketClient.connect(
                     onMessage = ::handleOrderMessage,
                     onConnectionChange = { connected ->
+                        Log.d(TAG, "🔗 Connection status changed: $connected")
                         _uiState.value = _uiState.value.copy(isConnected = connected)
                     },
                     onCustomerUpdate = ::handleCustomerUpdate,
@@ -57,150 +58,154 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun handleVoucherOrderUpdate(voucherOrder: VoucherOrderUpdateResponse) {
+        Log.d(
+            TAG,
+            "🎫 Voucher update received: ${voucherOrder.action} - ${voucherOrder.maPhieu} - Order: ${voucherOrder.hoaDonId} - Amount: ${voucherOrder.giaTriGiam}"
+        )
+
         val currentState = _uiState.value
         val updatedVoucherInfo = currentState.orderVoucherInfo.toMutableMap()
 
         when {
             voucherOrder.isApplied() -> {
                 updatedVoucherInfo[voucherOrder.hoaDonId] = voucherOrder
-                Log.d(TAG, "✅ Voucher applied: ${voucherOrder.maPhieu} -> Order ${voucherOrder.hoaDonId}")
+                Log.d(
+                    TAG,
+                    "✅ Voucher applied: ${voucherOrder.maPhieu} -> Order ${voucherOrder.hoaDonId}"
+                )
             }
+
             voucherOrder.isRemoved() -> {
                 updatedVoucherInfo.remove(voucherOrder.hoaDonId)
-                Log.d(TAG, "❌ Voucher removed: ${voucherOrder.maPhieu}")
+                Log.d(
+                    TAG,
+                    "❌ Voucher removed: ${voucherOrder.maPhieu} from Order ${voucherOrder.hoaDonId}"
+                )
             }
         }
 
-        // Cleanup - chỉ giữ voucher cho các order gần đây
-        val activeOrderIds = currentState.orders.take(20).map { it.id }.toSet()
+        val activeOrderIds = currentState.orders.map { it.id }.toSet()
         val cleanedVoucherInfo = updatedVoucherInfo.filterKeys { it in activeOrderIds }
 
         _uiState.value = currentState.copy(
             orderVoucherInfo = cleanedVoucherInfo,
             lastUpdated = System.currentTimeMillis()
         )
+
+        Log.d(TAG, "📊 Current voucher state: ${cleanedVoucherInfo.keys}")
     }
 
-    private fun handleOrderMessage(orders: List<HoaDonDetailResponse>) {
+    private fun handleOrderMessage(orders: List<HoaDonDetailResponse>, shouldReplace: Boolean) {
+        Log.d(TAG, "📦 Orders received: ${orders.size}, shouldReplace: $shouldReplace")
+
         val currentState = _uiState.value
-        val existingOrders = currentState.orders.associateBy { it.id }.toMutableMap()
 
-        // Cập nhật hoặc thêm orders mới
-        orders.forEach { order ->
-            existingOrders[order.id] = order
-
-            // Auto-link customer cho order mới
-            if (!currentState.orderCustomerMapping.containsKey(order.id)) {
-                tryAutoLinkCustomer(order, currentState)
+        val ordersWithCustomerInfo = orders.map { order ->
+            // Áp dụng thông tin khách hàng từ pendingCustomerUpdates nếu có
+            val pendingCustomer = pendingCustomerUpdates.values.lastOrNull()
+            if (pendingCustomer != null && pendingCustomer.isValidForDisplay()) {
+                Log.d(TAG, "📝 Applying pending customer update to order ${order.id}: ${pendingCustomer.ten}")
+                order.copy(
+                    tenKhachHang = pendingCustomer.ten,
+                    soDienThoaiKhachHang = pendingCustomer.soDienThoai ?: "",
+                    emailKhachHang = pendingCustomer.email ?: "",
+                    khachHangId = pendingCustomer.id // Thay thế khachHangId
+                )
+            } else {
+                order
             }
         }
 
-        // Sắp xếp và giới hạn số lượng
-        val sortedOrders = existingOrders.values
-            .sortedByDescending { it.id }
-            .take(MAX_ORDERS)
+        val finalOrders = if (shouldReplace) {
+            Log.d(TAG, "🔄 Replacing all orders with new cart data")
+            ordersWithCustomerInfo
+        } else {
+            Log.d(TAG, "🔄 Updating existing orders list")
+            val existingOrders = currentState.orders.associateBy { it.id }.toMutableMap()
+
+            ordersWithCustomerInfo.forEach { order ->
+                val wasExisting = existingOrders.containsKey(order.id)
+                existingOrders[order.id] = order
+                Log.d(TAG, "Order ${order.id}: ${if (wasExisting) "updated" else "new"}")
+            }
+
+            existingOrders.values.sortedByDescending { it.id }.take(MAX_ORDERS)
+        }
+
+        val currentOrderIds = finalOrders.map { it.id }.toSet()
+        val filteredVoucherInfo = currentState.orderVoucherInfo.filterKeys { it in currentOrderIds }
+
+        pendingCustomerUpdates.keys.retainAll(finalOrders.map { it.khachHangId }.toSet()) // Clean up by khachHangId
 
         _uiState.value = currentState.copy(
-            orders = sortedOrders,
+            orders = finalOrders,
+            orderVoucherInfo = filteredVoucherInfo,
             lastUpdated = System.currentTimeMillis()
+        )
+
+        Log.d(
+            TAG,
+            "📋 Final orders count: ${finalOrders.size}, vouchers: ${filteredVoucherInfo.size}, pending customers: ${pendingCustomerUpdates.size}"
         )
     }
 
     private fun handleCustomerUpdate(customer: KhachHang) {
-        if (!customer.isValidForDisplay()) return
+        Log.d(TAG, "👤 ============ CUSTOMER UPDATE RECEIVED ============")
+        Log.d(TAG, "   - ID: ${customer.id}")
+        Log.d(TAG, "   - Name: '${customer.ten}'")
+        Log.d(TAG, "   - Phone: '${customer.soDienThoai}'")
+        Log.d(TAG, "   - Email: '${customer.email}'")
+        Log.d(TAG, "   - Valid for display: ${customer.isValidForDisplay()}")
+
+        if (!customer.isValidForDisplay()) {
+            Log.w(TAG, "⚠️ Invalid customer data, ignoring")
+            return
+        }
 
         val currentState = _uiState.value
-        val updatedCustomers = currentState.khachHangInfo.toMutableMap()
 
-        // Lưu customer với nhiều key để dễ tìm
-        updatedCustomers["id_${customer.id}"] = customer
-        customer.soDienThoai?.takeIf { it.isNotEmpty() }?.let {
-            updatedCustomers[it] = customer
-        }
-        customer.email?.takeIf { it.isNotEmpty() }?.let {
-            updatedCustomers[it] = customer
-        }
-
-        // Auto-link với orders gần đây
-        val newMapping = currentState.orderCustomerMapping.toMutableMap()
-        currentState.orders.take(5).forEach { order ->
-            if (!newMapping.containsKey(order.id) && shouldLinkCustomer(customer, order)) {
-                newMapping[order.id] = customer.id
-            }
+        // Thay thế thông tin khách hàng cho đơn hàng mới nhất hoặc tất cả đơn hàng
+        val updatedOrders = currentState.orders.map { order ->
+            Log.d(TAG, "✅ Updating order ${order.id} with customer info: ${customer.ten}")
+            order.copy(
+                tenKhachHang = customer.ten,
+                soDienThoaiKhachHang = customer.soDienThoai ?: order.soDienThoaiKhachHang,
+                emailKhachHang = customer.email ?: order.emailKhachHang,
+                khachHangId = customer.id // Thay thế khachHangId
+            )
         }
 
-        // Cleanup - giữ số lượng customer hợp lý
-        val finalCustomers = if (updatedCustomers.size > MAX_CUSTOMERS) {
-            val recentCustomers = updatedCustomers.values
-                .distinctBy { it.id }
-                .sortedByDescending { it.id }
-                .take(25)
+        // Lưu thông tin khách hàng vào pendingCustomerUpdates cho các đơn hàng mới
+        pendingCustomerUpdates[customer.id] = customer
 
-            recentCustomers.flatMap { c ->
-                listOfNotNull(
-                    "id_${c.id}" to c,
-                    c.soDienThoai?.takeIf { it.isNotEmpty() }?.let { it to c },
-                    c.email?.takeIf { it.isNotEmpty() }?.let { it to c }
-                )
-            }.toMap()
-        } else updatedCustomers
-
+        // Cập nhật UI state
         _uiState.value = currentState.copy(
-            khachHangInfo = finalCustomers,
-            orderCustomerMapping = newMapping,
+            orders = updatedOrders,
             lastUpdated = System.currentTimeMillis()
         )
-    }
 
-    private fun tryAutoLinkCustomer(order: HoaDonDetailResponse, state: OrderUiState) {
-        if (state.orderCustomerMapping.containsKey(order.id)) return
-
-        val customer = state.khachHangInfo.values.find { shouldLinkCustomer(it, order) }
-        customer?.let {
-            val newMapping = state.orderCustomerMapping + (order.id to it.id)
-            _uiState.value = state.copy(orderCustomerMapping = newMapping)
-        }
-    }
-
-    private fun shouldLinkCustomer(customer: KhachHang, order: HoaDonDetailResponse): Boolean {
-        // Kiểm tra trực tiếp bằng SĐT
-        if (order.soDienThoaiKhachHang.isNotEmpty() &&
-            order.soDienThoaiKhachHang == customer.soDienThoai) return true
-
-        // Kiểm tra trực tiếp bằng email
-        if (order.emailKhachHang.isNotEmpty() &&
-            order.emailKhachHang == customer.email) return true
-
-        // Liên kết theo thời gian cho khách lẻ (trong vòng 2 phút)
-        if (order.tenKhachHang == "Khách vãng lai" || order.soDienThoaiKhachHang.isEmpty()) {
-            val orderTime = parseOrderTime(order.ngayTao)
-            val timeDiff = Math.abs(System.currentTimeMillis() - orderTime)
-            return timeDiff <= AUTO_LINK_TIME_WINDOW
-        }
-
-        return false
-    }
-
-    private fun parseOrderTime(dateString: String): Long {
-        return try {
-            val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-            format.parse(dateString)?.time ?: System.currentTimeMillis()
-        } catch (e: Exception) {
-            System.currentTimeMillis()
-        }
+        Log.d(TAG, "🎉 UI updated with customer info for all orders")
+        Log.d(TAG, "================ CUSTOMER UPDATE COMPLETED ================")
     }
 
     fun reconnect() {
+        Log.d(TAG, "🔄 Manual reconnect triggered")
         viewModelScope.launch {
             webSocketClient.disconnect()
+            pendingCustomerUpdates.clear()
+            _uiState.value = _uiState.value.copy(
+                orderVoucherInfo = emptyMap(),
+                isConnected = false
+            )
             connectWebSocket()
         }
     }
 
     fun clearOrders() {
+        Log.d(TAG, "🗑️ Clearing all orders and state")
+        pendingCustomerUpdates.clear()
         _uiState.value = _uiState.value.copy(
             orders = emptyList(),
-            orderCustomerMapping = emptyMap(),
             orderVoucherInfo = emptyMap(),
             lastUpdated = System.currentTimeMillis()
         )
@@ -210,5 +215,6 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         webSocketClient.disconnect()
         networkMonitor.cleanup()
+        pendingCustomerUpdates.clear()
     }
 }

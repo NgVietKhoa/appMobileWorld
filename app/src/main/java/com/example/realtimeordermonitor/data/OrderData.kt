@@ -32,6 +32,7 @@ data class HoaDonDetailResponse(
     val tenKhachHang: String = "",
     val soDienThoaiKhachHang: String = "",
     val emailKhachHang: String = "",
+    val khachHangId: Int = 0, // Added field
     val tongTien: Long = 0L,
     val tongTienSauGiam: Long = 0L,
     val tienGiamGia: Long = 0L,
@@ -58,22 +59,32 @@ data class HoaDonDetailResponse(
     }
 
     fun getEffectiveVoucherInfo(voucherOrderInfo: VoucherOrderUpdateResponse?): Pair<String, Long> {
-        // Nếu có thông tin voucher realtime và đang active
         if (voucherOrderInfo?.isApplied() == true) {
             return voucherOrderInfo.maPhieu to voucherOrderInfo.giaTriGiam.toLong()
         }
-        // Fallback về thông tin voucher trong order
         return maPhieuGiamGia to tienGiamGia
     }
 
     fun getCalculatedTotal(): Long {
-        return sanPhamChiTiet.sumOf { it.thanhTien }
+        return sanPhamChiTiet.sumOf { it.getActualThanhTien() }
     }
 
     fun getCalculatedTotalAfterDiscount(voucherOrderInfo: VoucherOrderUpdateResponse?): Long {
         val baseTotal = getCalculatedTotal()
-        val (_, discountAmount) = getEffectiveVoucherInfo(voucherOrderInfo)
-        return baseTotal - discountAmount
+        val discountAmount = getEffectiveDiscountAmount(voucherOrderInfo)
+        return maxOf(0L, baseTotal - discountAmount)
+    }
+
+    fun getEffectiveDiscountAmount(voucherOrderInfo: VoucherOrderUpdateResponse?): Long {
+        return if (voucherOrderInfo?.isApplied() == true) {
+            voucherOrderInfo.giaTriGiam.toLong()
+        } else {
+            0L
+        }
+    }
+
+    fun hasRealtimeVoucher(voucherOrderInfo: VoucherOrderUpdateResponse?): Boolean {
+        return voucherOrderInfo?.isApplied() == true
     }
 
     fun getFormattedDate(): String {
@@ -109,6 +120,10 @@ data class SanPhamChiTiet(
         )
         return specs.joinToString(" • ")
     }
+
+    fun getActualThanhTien(): Long {
+        return giaBan * soLuong
+    }
 }
 
 // Payment Info
@@ -122,34 +137,32 @@ data class ThanhToanInfo(
 @Parcelize
 data class OrderUiState(
     val orders: List<HoaDonDetailResponse> = emptyList(),
-    val khachHangInfo: Map<String, KhachHang> = emptyMap(),
-    val orderCustomerMapping: Map<Int, Int> = emptyMap(),
     val orderVoucherInfo: Map<Int, VoucherOrderUpdateResponse> = emptyMap(),
     val isConnected: Boolean = false,
     val lastUpdated: Long = 0L
 ) : Parcelable {
 
     fun getCustomerForOrder(order: HoaDonDetailResponse): KhachHang? {
-        // 1. Check direct mapping
-        orderCustomerMapping[order.id]?.let { customerId ->
-            khachHangInfo["id_$customerId"]?.let { return it }
-        }
-
-        // 2. Check by phone
-        if (order.soDienThoaiKhachHang.isNotEmpty()) {
-            khachHangInfo[order.soDienThoaiKhachHang]?.let { return it }
-        }
-
-        // 3. Check by email
-        if (order.emailKhachHang.isNotEmpty()) {
-            khachHangInfo[order.emailKhachHang]?.let { return it }
-        }
-
-        return null
+        return if (order.hasCustomerInfo() && order.soDienThoaiKhachHang.isNotEmpty()) {
+            KhachHang(
+                id = order.khachHangId, // Use khachHangId
+                ten = order.tenKhachHang,
+                soDienThoai = order.soDienThoaiKhachHang.takeIf { it.isNotEmpty() },
+                email = order.emailKhachHang.takeIf { it.isNotEmpty() }
+            )
+        } else null
     }
 
     fun getVoucherForOrder(orderId: Int): VoucherOrderUpdateResponse? {
         return orderVoucherInfo[orderId]?.takeIf { it.trangThai }
+    }
+
+    fun hasOrdersWaitingForCustomerInfo(): Boolean {
+        return orders.any { !it.hasCustomerInfo() }
+    }
+
+    fun getLatestOrderWaitingForCustomer(): HoaDonDetailResponse? {
+        return orders.firstOrNull { !it.hasCustomerInfo() }
     }
 }
 
