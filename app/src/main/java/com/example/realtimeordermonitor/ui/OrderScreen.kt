@@ -17,11 +17,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.realtimeordermonitor.R
 import com.example.realtimeordermonitor.data.*
 import com.example.realtimeordermonitor.viewmodel.OrderViewModel
@@ -399,20 +403,74 @@ private fun ProductsSection(products: List<SanPhamChiTiet>) {
 
 @Composable
 private fun ProductItem(product: SanPhamChiTiet) {
+    // Log image URL for debugging
+    LaunchedEffect(product.anhSanPham) {
+        android.util.Log.d("ProductImage", "📸 Product: ${product.tenSanPham}")
+        android.util.Log.d("ProductImage", "🔗 Image URL: '${product.anhSanPham}'")
+        android.util.Log.d("ProductImage", "📏 URL length: ${product.anhSanPham.length}")
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        // Product Image
+        if (product.anhSanPham.isNotEmpty()) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(product.anhSanPham)
+                    .crossfade(true)
+                    .listener(
+                        onStart = {
+                            android.util.Log.d("ProductImage", "🚀 Loading image: ${product.anhSanPham}")
+                        },
+                        onSuccess = { _, _ ->
+                            android.util.Log.d("ProductImage", "✅ Image loaded successfully: ${product.tenSanPham}")
+                        },
+                        onError = { _, error ->
+                            android.util.Log.e("ProductImage", "❌ Image load error for ${product.tenSanPham}: ${error.throwable.message}")
+                        }
+                    )
+                    .build(),
+                contentDescription = "Ảnh ${product.tenSanPham}",
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF8FAFC)),
+                contentScale = ContentScale.Crop,
+                placeholder = painterResource(id = R.drawable.ic_placeholder_image),
+                error = painterResource(id = R.drawable.ic_placeholder_image)
+            )
+        } else {
+            android.util.Log.w("ProductImage", "⚠️ No image URL for product: ${product.tenSanPham}")
+            // Placeholder when no image
+            Box(
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF1F5F9)),
+                contentAlignment = Alignment.Center
+            ) {
+            }
+        }
+
+        // Product Info
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             Text(
                 product.tenSanPham,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            Row {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     "SL: ${product.soLuong}",
                     style = MaterialTheme.typography.bodySmall,
@@ -430,9 +488,11 @@ private fun ProductItem(product: SanPhamChiTiet) {
             }
         }
 
+        // Price
         Text(
             text = product.getActualThanhTien().toVNDCurrency(),
             style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
             color = Color.Black
         )
     }

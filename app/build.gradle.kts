@@ -77,6 +77,12 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation(libs.foundation)
 
+    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("io.coil-kt:coil-gif:2.5.0") // If you need GIF support
+
+    // Network support for images
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")

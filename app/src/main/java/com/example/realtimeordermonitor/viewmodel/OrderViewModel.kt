@@ -136,18 +136,72 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
         val currentState = _uiState.value
 
         val ordersWithCustomerInfo = orders.map { order ->
-            // Áp dụng thông tin khách hàng từ pendingCustomerUpdates nếu có
-            val pendingCustomer = pendingCustomerUpdates.values.lastOrNull()
-            if (pendingCustomer != null && pendingCustomer.isValidForDisplay()) {
+            Log.d(TAG, "🔍 Processing order ${order.id}:")
+            Log.d(TAG, "   - Original customer: '${order.tenKhachHang}' (ID: ${order.khachHangId})")
+            Log.d(TAG, "   - Original phone: '${order.soDienThoaiKhachHang}'")
+            Log.d(TAG, "   - Original email: '${order.emailKhachHang}'")
+
+            // Log product images
+            Log.d(TAG, "   - Products with images:")
+            order.sanPhamChiTiet.forEach { product ->
+                Log.d(TAG, "     * ${product.tenSanPham}: '${product.anhSanPham}' (${if (product.anhSanPham.isNotEmpty()) "HAS IMAGE" else "NO IMAGE"})")
+            }
+
+            // Priority 1: Use customer info directly from cart update if valid
+            val hasValidCartCustomerInfo = order.tenKhachHang.isNotEmpty() &&
+                    order.tenKhachHang != "Khách lẻ" &&
+                    order.tenKhachHang != "Khách vãng lai" &&
+                    order.khachHangId > 0
+
+            if (hasValidCartCustomerInfo) {
+                Log.d(TAG, "✅ Using customer info from cart update for order ${order.id}: ${order.tenKhachHang}")
+
+                // Also update pendingCustomerUpdates to keep consistency
+                val customerFromCart = KhachHang(
+                    id = order.khachHangId,
+                    ten = order.tenKhachHang,
+                    soDienThoai = order.soDienThoaiKhachHang.takeIf { it.isNotEmpty() },
+                    email = order.emailKhachHang.takeIf { it.isNotEmpty() }
+                )
+                pendingCustomerUpdates[order.khachHangId] = customerFromCart
+
+                return@map order // Use cart customer info as-is
+            }
+
+            // Priority 2: Check if we have pending customer update that matches this order
+            val pendingCustomer = pendingCustomerUpdates.values.find { customer ->
+                customer.isValidForDisplay() && (
+                        // Match by customer ID if available
+                        (order.khachHangId > 0 && customer.id == order.khachHangId) ||
+                                // Match by phone number if ID not available
+                                (!customer.soDienThoai.isNullOrEmpty() && customer.soDienThoai == order.soDienThoaiKhachHang) ||
+                                // For new orders without customer info, use the latest pending customer
+                                (!order.hasCustomerInfo() && pendingCustomerUpdates.isNotEmpty())
+                        )
+            }
+
+            if (pendingCustomer != null) {
                 Log.d(TAG, "👤 Applying pending customer update to order ${order.id}: ${pendingCustomer.ten}")
-                order.copy(
+                return@map order.copy(
                     tenKhachHang = pendingCustomer.ten,
                     soDienThoaiKhachHang = pendingCustomer.soDienThoai ?: "",
                     emailKhachHang = pendingCustomer.email ?: "",
-                    khachHangId = pendingCustomer.id // Thay thế khachHangId
+                    khachHangId = pendingCustomer.id
                 )
+            }
+
+            // Priority 3: Keep existing customer info or default to "Khách lẻ"
+            if (order.hasCustomerInfo()) {
+                Log.d(TAG, "📋 Keeping existing customer info for order ${order.id}")
+                return@map order
             } else {
-                order
+                Log.d(TAG, "🚶 No customer info available for order ${order.id}, using default")
+                return@map order.copy(
+                    tenKhachHang = "Khách lẻ",
+                    soDienThoaiKhachHang = "",
+                    emailKhachHang = "",
+                    khachHangId = 0
+                )
             }
         }
 
@@ -160,8 +214,29 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
 
             ordersWithCustomerInfo.forEach { order ->
                 val wasExisting = existingOrders.containsKey(order.id)
-                existingOrders[order.id] = order
-                Log.d(TAG, "Order ${order.id}: ${if (wasExisting) "updated" else "new"}")
+
+                // For existing orders, preserve customer info if the new order doesn't have better info
+                if (wasExisting) {
+                    val existingOrder = existingOrders[order.id]!!
+                    val shouldKeepExistingCustomer = existingOrder.hasCustomerInfo() &&
+                            !order.hasCustomerInfo()
+
+                    if (shouldKeepExistingCustomer) {
+                        Log.d(TAG, "🔒 Preserving existing customer info for order ${order.id}")
+                        existingOrders[order.id] = order.copy(
+                            tenKhachHang = existingOrder.tenKhachHang,
+                            soDienThoaiKhachHang = existingOrder.soDienThoaiKhachHang,
+                            emailKhachHang = existingOrder.emailKhachHang,
+                            khachHangId = existingOrder.khachHangId
+                        )
+                    } else {
+                        existingOrders[order.id] = order
+                    }
+                } else {
+                    existingOrders[order.id] = order
+                }
+
+                Log.d(TAG, "Order ${order.id}: ${if (wasExisting) "updated" else "new"} - Customer: ${existingOrders[order.id]?.tenKhachHang}")
             }
 
             existingOrders.values.sortedByDescending { it.id }.take(MAX_ORDERS)
@@ -170,7 +245,11 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
         val currentOrderIds = finalOrders.map { it.id }.toSet()
         val filteredVoucherInfo = currentState.orderVoucherInfo.filterKeys { it in currentOrderIds }
 
-        pendingCustomerUpdates.keys.retainAll(finalOrders.map { it.khachHangId }.toSet()) // Clean up by khachHangId
+        // Clean up pending customer updates - only keep customers that are still relevant
+        val activeCustomerIds = finalOrders.mapNotNull {
+            if (it.khachHangId > 0) it.khachHangId else null
+        }.toSet()
+        pendingCustomerUpdates.keys.retainAll(activeCustomerIds)
 
         _uiState.value = currentState.copy(
             orders = finalOrders,
@@ -178,10 +257,15 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
             lastUpdated = System.currentTimeMillis()
         )
 
-        Log.d(
-            TAG,
-            "📋 Final orders count: ${finalOrders.size}, vouchers: ${filteredVoucherInfo.size}, pending customers: ${pendingCustomerUpdates.size}"
-        )
+        Log.d(TAG, "📋 Final orders count: ${finalOrders.size}")
+        finalOrders.forEach { order ->
+            Log.d(TAG, "   Order ${order.id}: Customer='${order.tenKhachHang}' (ID: ${order.khachHangId}), Phone='${order.soDienThoaiKhachHang}'")
+            Log.d(TAG, "   Products with images:")
+            order.sanPhamChiTiet.forEach { product ->
+                Log.d(TAG, "     - ${product.tenSanPham}: '${product.anhSanPham}'")
+            }
+        }
+        Log.d(TAG, "📊 Vouchers: ${filteredVoucherInfo.size}, Pending customers: ${pendingCustomerUpdates.size}")
     }
 
     private fun handleCustomerUpdate(customer: KhachHang) {

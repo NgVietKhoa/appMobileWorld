@@ -156,6 +156,7 @@ class OrderWebSocketClient {
         }
     }
 
+
     private fun parseGioHangUpdate(message: String) {
         try {
             Log.d(TAG, "🛒 Processing gio-hang-update:")
@@ -166,6 +167,17 @@ class OrderWebSocketClient {
             if (update.hoaDonId <= 0) {
                 Log.w(TAG, "⚠️ Invalid hoaDonId: ${update.hoaDonId}")
                 return
+            }
+
+            // Log detailed cart information including images
+            update.gioHang?.chiTietGioHangDTOS?.forEachIndexed { index, item ->
+                Log.d(TAG, "📦 Product $index:")
+                Log.d(TAG, "   - Name: ${item.tenSanPham}")
+                Log.d(TAG, "   - Quantity: ${item.soLuong}")
+                Log.d(TAG, "   - Price: ${item.giaBan}")
+                Log.d(TAG, "   - Image URL: '${item.image}'")
+                Log.d(TAG, "   - Image URL length: ${item.image?.length ?: 0}")
+                Log.d(TAG, "   - Image URL empty: ${item.image.isNullOrEmpty()}")
             }
 
             if (update.hasVoucherInfo()) {
@@ -325,11 +337,11 @@ class OrderWebSocketClient {
             tenKhachHang = update.tenKhachHang ?: "Khách lẻ",
             soDienThoaiKhachHang = update.soDienThoaiKhachHang ?: "",
             emailKhachHang = update.emailKhachHang ?: "",
-            khachHangId = update.idKhachHang ?: 0, // Giữ nguyên, nhưng có thể thêm logic nếu cần
+            khachHangId = update.idKhachHang ?: 0,
             tongTien = 0L,
             tongTienSauGiam = 0L,
             tienGiamGia = 0L,
-            maPhieuGiamGia = update.maPhieuGiamGia ?: "",
+            maPhieuGiamGia = "",  // Clear voucher for empty cart
             trangThai = 0,
             trangThaiText = "Chờ xác nhận",
             ngayTao = getCurrentTimestamp(),
@@ -337,9 +349,53 @@ class OrderWebSocketClient {
             thanhToanInfo = emptyList()
         )
 
-        val products = cart.chiTietGioHangDTOS.map { item ->
-            Log.d(TAG, "   Product: ${item.tenSanPham} - Qty: ${item.soLuong}")
-            item.toSanPhamChiTiet()
+        val products = cart.chiTietGioHangDTOS.mapIndexed { index, item ->
+            Log.d(TAG, "   Product $index: ${item.tenSanPham} - Qty: ${item.soLuong}")
+            Log.d(TAG, "   Image conversion: '${item.image}' -> '${item.image ?: ""}'")
+
+            val sanPham = item.toSanPhamChiTiet()
+            Log.d(TAG, "   Final image in SanPhamChiTiet: '${sanPham.anhSanPham}'")
+            sanPham
+        }
+
+        // Calculate total quantity
+        val totalQuantity = products.sumOf { it.soLuong }
+        Log.d(TAG, "📊 Total quantity calculated: $totalQuantity")
+
+        // Check if total quantity is zero - if so, clear voucher info
+        val shouldClearVoucher = totalQuantity == 0
+        if (shouldClearVoucher) {
+            Log.w(TAG, "⚠️ Total quantity is 0, clearing voucher information")
+
+            // Send voucher removal update if there was a voucher applied
+            if (update.hasVoucherInfo()) {
+                Log.d(TAG, "🎫 Removing voucher ${update.maPhieuGiamGia} due to zero quantity")
+                val voucherRemovalUpdate = VoucherOrderUpdateResponse(
+                    action = "VOUCHER_REMOVED",
+                    hoaDonId = update.hoaDonId,
+                    phieuGiamGiaId = update.idPhieuGiamGia ?: 0,
+                    maPhieu = update.maPhieuGiamGia ?: "",
+                    giaTriGiam = 0.0, // Set to 0 when removed
+                    trangThai = false,
+                    timestamp = update.timestamp
+                )
+                voucherOrderCallback?.invoke(voucherRemovalUpdate)
+            }
+        } else {
+            // Only process voucher info if quantity > 0
+            if (update.hasVoucherInfo()) {
+                Log.d(TAG, "🎫 Voucher info from cart update: ${update.maPhieuGiamGia} - Amount: ${update.soTienGiam}")
+                val voucherUpdate = VoucherOrderUpdateResponse(
+                    action = "VOUCHER_APPLIED",
+                    hoaDonId = update.hoaDonId,
+                    phieuGiamGiaId = update.idPhieuGiamGia ?: 0,
+                    maPhieu = update.maPhieuGiamGia ?: "",
+                    giaTriGiam = update.soTienGiam ?: 0.0,
+                    trangThai = true,
+                    timestamp = update.timestamp
+                )
+                voucherOrderCallback?.invoke(voucherUpdate)
+            }
         }
 
         val calculatedTotal = products.sumOf { it.getActualThanhTien() }
@@ -348,9 +404,17 @@ class OrderWebSocketClient {
 
         val finalTotal = if (cartOriginalTotal > 0) cartOriginalTotal else calculatedTotal
         val finalAfterDiscount = cartTotal
-        val voucherDiscountAmount = update.soTienGiam?.toLong() ?: 0L
-        val discountAmount = maxOf(0L, finalTotal - finalAfterDiscount)
+
+        // Clear voucher discount if total quantity is 0
+        val voucherDiscountAmount = if (shouldClearVoucher) 0L else (update.soTienGiam?.toLong() ?: 0L)
+        val discountAmount = if (shouldClearVoucher) 0L else maxOf(0L, finalTotal - finalAfterDiscount)
         val effectiveDiscountAmount = if (voucherDiscountAmount > 0) voucherDiscountAmount else discountAmount
+
+        // Log final product info with images
+        Log.d(TAG, "📋 Final order products:")
+        products.forEach { product ->
+            Log.d(TAG, "   - ${product.tenSanPham}: ${product.anhSanPham}")
+        }
 
         return HoaDonDetailResponse(
             id = update.hoaDonId,
@@ -361,9 +425,9 @@ class OrderWebSocketClient {
             emailKhachHang = update.emailKhachHang ?: "",
             khachHangId = update.idKhachHang ?: 0,
             tongTien = finalTotal,
-            tongTienSauGiam = finalAfterDiscount,
-            tienGiamGia = effectiveDiscountAmount,
-            maPhieuGiamGia = update.maPhieuGiamGia ?: "",
+            tongTienSauGiam = if (shouldClearVoucher) finalTotal else finalAfterDiscount, // No discount if qty = 0
+            tienGiamGia = if (shouldClearVoucher) 0L else effectiveDiscountAmount, // Clear discount if qty = 0
+            maPhieuGiamGia = if (shouldClearVoucher) "" else (update.maPhieuGiamGia ?: ""), // Clear voucher code if qty = 0
             ghiChu = "",
             trangThai = 0,
             trangThaiText = "Chờ xác nhận",
