@@ -176,3 +176,80 @@ data class KhachHangUpdateMessage(
         return khachHangId > 0 && ten.isNotEmpty()
     }
 }
+
+data class PaymentSuccessInfo(
+    @SerializedName("hoaDonId")
+    val hoaDonId: Int,
+
+    @SerializedName("hoaDon")
+    val hoaDon: PaymentSuccessOrder,
+
+    @SerializedName("action")
+    val action: String,
+
+    @SerializedName("timestamp")
+    val timestamp: String
+)
+
+data class PaymentSuccessOrder(
+    @SerializedName("id")
+    val id: Int,
+
+    @SerializedName("idKhachHang")
+    val idKhachHang: Int?,
+
+    @SerializedName("idPhieuGiamGia")
+    val idPhieuGiamGia: Int?,
+
+    @SerializedName("idNhanVien")
+    val idNhanVien: Int?,
+
+    @SerializedName("ma")
+    val ma: String,
+
+    @SerializedName("tienSanPham")
+    val tienSanPham: Double,
+
+    @SerializedName("loaiDon")
+    val loaiDon: String,
+
+    @SerializedName("phiVanChuyen")
+    val phiVanChuyen: Double,
+
+    @SerializedName("tongTien")
+    val tongTien: Long,
+
+    @SerializedName("tongTienSauGiam")
+    val tongTienSauGiam: Long,
+
+    @SerializedName("ghiChu")
+    val ghiChu: String,
+
+    @SerializedName("tenKhachHang")
+    val tenKhachHang: String,
+
+    @SerializedName("diaChiKhachHang")
+    val diaChiKhachHang: String?,
+
+    @SerializedName("soDienThoaiKhachHang")
+    val soDienThoaiKhachHang: String?,
+
+    @SerializedName("email")
+    val email: String?,
+
+    @SerializedName("ngayTao")
+    val ngayTao: String,
+
+    @SerializedName("trangThai")
+    val trangThai: Int,
+
+    @SerializedName("chiTietGioHangDTOS")
+    val chiTietGioHangDTOS: List<Any>, // Empty list in payment success
+
+    @SerializedName("ghiChuGia")
+    val ghiChuGia: String?
+) {
+    fun isPaymentCompleted(): Boolean = trangThai == 3 // Assuming 3 is completed status
+
+    fun isValidPayment(): Boolean = id > 0 && tongTien > 0
+}

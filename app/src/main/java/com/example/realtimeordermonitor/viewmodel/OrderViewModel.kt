@@ -48,13 +48,48 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.value = _uiState.value.copy(isConnected = connected)
                     },
                     onCustomerUpdate = ::handleCustomerUpdate,
-                    onVoucherOrderUpdate = ::handleVoucherOrderUpdate
+                    onVoucherOrderUpdate = ::handleVoucherOrderUpdate,
+                    onPaymentSuccess = ::handlePaymentSuccess // Thêm callback cho payment success
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Connection error", e)
                 _uiState.value = _uiState.value.copy(isConnected = false)
             }
         }
+    }
+
+    private fun handlePaymentSuccess(paymentInfo: PaymentSuccessInfo) {
+        Log.d(TAG, "💳 ============ PAYMENT SUCCESS RECEIVED ============")
+        Log.d(TAG, "   - Order ID: ${paymentInfo.hoaDonId}")
+        Log.d(TAG, "   - Action: ${paymentInfo.action}")
+        Log.d(TAG, "   - Order Code: ${paymentInfo.hoaDon.ma}")
+        Log.d(TAG, "   - Customer: ${paymentInfo.hoaDon.tenKhachHang}")
+        Log.d(TAG, "   - Status: ${paymentInfo.hoaDon.trangThai}")
+
+        val currentState = _uiState.value
+
+        // Tìm và xóa hóa đơn đã thanh toán thành công
+        val updatedOrders = currentState.orders.filter { it.id != paymentInfo.hoaDonId }
+
+        // Xóa thông tin voucher liên quan đến hóa đơn này
+        val updatedVoucherInfo = currentState.orderVoucherInfo.filterKeys { it != paymentInfo.hoaDonId }
+
+        // Xóa thông tin customer pending nếu có
+        pendingCustomerUpdates.clear()
+
+        // Cập nhật UI state - reset về trạng thái ban đầu
+        _uiState.value = currentState.copy(
+            orders = updatedOrders,
+            orderVoucherInfo = updatedVoucherInfo,
+            lastUpdated = System.currentTimeMillis()
+        )
+
+        Log.d(TAG, "✅ Payment success processed:")
+        Log.d(TAG, "   - Removed order ${paymentInfo.hoaDonId} from active orders")
+        Log.d(TAG, "   - Remaining orders: ${updatedOrders.size}")
+        Log.d(TAG, "   - Remaining vouchers: ${updatedVoucherInfo.size}")
+        Log.d(TAG, "   - Pending customers cleared")
+        Log.d(TAG, "================ PAYMENT SUCCESS COMPLETED ================")
     }
 
     private fun handleVoucherOrderUpdate(voucherOrder: VoucherOrderUpdateResponse) {
@@ -104,7 +139,7 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
             // Áp dụng thông tin khách hàng từ pendingCustomerUpdates nếu có
             val pendingCustomer = pendingCustomerUpdates.values.lastOrNull()
             if (pendingCustomer != null && pendingCustomer.isValidForDisplay()) {
-                Log.d(TAG, "📝 Applying pending customer update to order ${order.id}: ${pendingCustomer.ten}")
+                Log.d(TAG, "👤 Applying pending customer update to order ${order.id}: ${pendingCustomer.ten}")
                 order.copy(
                     tenKhachHang = pendingCustomer.ten,
                     soDienThoaiKhachHang = pendingCustomer.soDienThoai ?: "",
@@ -157,21 +192,52 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
         Log.d(TAG, "   - Email: '${customer.email}'")
         Log.d(TAG, "   - Valid for display: ${customer.isValidForDisplay()}")
 
+        val currentState = _uiState.value
+
+        // Kiểm tra nếu là khách vãng lai (tên là "Khách lẻ" hoặc tương tự)
+        val isWalkInCustomer = customer.ten.equals("Khách vãng lai", ignoreCase = true) ||
+                customer.ten.equals("Khách lẻ", ignoreCase = true) ||
+                customer.id <= 0
+
+        if (isWalkInCustomer) {
+            Log.d(TAG, "🚶 Walk-in customer detected, clearing previous customer info")
+
+            // Xóa thông tin khách hàng cũ và reset về khách vãng lai
+            val updatedOrders = currentState.orders.map { order ->
+                Log.d(TAG, "🔄 Resetting order ${order.id} to walk-in customer")
+                order.copy(
+                    tenKhachHang = "Khách vãng lai",
+                    soDienThoaiKhachHang = "", // Xóa số điện thoại cũ
+                    emailKhachHang = "", // Xóa email cũ
+                    khachHangId = 0 // Reset khachHangId
+                )
+            }
+
+            // Clear pending customer updates
+            pendingCustomerUpdates.clear()
+
+            _uiState.value = currentState.copy(
+                orders = updatedOrders,
+                lastUpdated = System.currentTimeMillis()
+            )
+
+            Log.d(TAG, "✅ All orders reset to walk-in customer")
+            return
+        }
+
         if (!customer.isValidForDisplay()) {
             Log.w(TAG, "⚠️ Invalid customer data, ignoring")
             return
         }
-
-        val currentState = _uiState.value
 
         // Thay thế thông tin khách hàng cho đơn hàng mới nhất hoặc tất cả đơn hàng
         val updatedOrders = currentState.orders.map { order ->
             Log.d(TAG, "✅ Updating order ${order.id} with customer info: ${customer.ten}")
             order.copy(
                 tenKhachHang = customer.ten,
-                soDienThoaiKhachHang = customer.soDienThoai ?: order.soDienThoaiKhachHang,
-                emailKhachHang = customer.email ?: order.emailKhachHang,
-                khachHangId = customer.id // Thay thế khachHangId
+                soDienThoaiKhachHang = customer.soDienThoai ?: "", // Sử dụng empty string thay vì giữ lại giá trị cũ
+                emailKhachHang = customer.email ?: "", // Sử dụng empty string thay vì giữ lại giá trị cũ
+                khachHangId = customer.id
             )
         }
 

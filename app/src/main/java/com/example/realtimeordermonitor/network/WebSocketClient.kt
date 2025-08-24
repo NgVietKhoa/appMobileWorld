@@ -19,6 +19,7 @@ class OrderWebSocketClient {
     private var customerCallback: ((KhachHang) -> Unit)? = null
     private var connectionCallback: ((Boolean) -> Unit)? = null
     private var voucherOrderCallback: ((VoucherOrderUpdateResponse) -> Unit)? = null
+    private var paymentSuccessCallback: ((PaymentSuccessInfo) -> Unit)? = null
 
     private var isConnecting = false
     private var reconnectAttempts = 0
@@ -27,14 +28,15 @@ class OrderWebSocketClient {
 
     companion object {
         private const val TAG = "OrderWebSocketClient"
-        private const val WS_URL = "ws://192.168.1.3:8080/ws"
+        private const val WS_URL = "ws://192.168.1.6:8080/ws"
     }
 
     suspend fun connect(
         onMessage: (List<HoaDonDetailResponse>, Boolean) -> Unit,
         onConnectionChange: (Boolean) -> Unit,
         onCustomerUpdate: ((KhachHang) -> Unit)? = null,
-        onVoucherOrderUpdate: ((VoucherOrderUpdateResponse) -> Unit)? = null
+        onVoucherOrderUpdate: ((VoucherOrderUpdateResponse) -> Unit)? = null,
+        onPaymentSuccess: ((PaymentSuccessInfo) -> Unit)? = null
     ) {
         if (isConnecting || isConnected()) return
 
@@ -43,6 +45,7 @@ class OrderWebSocketClient {
         connectionCallback = onConnectionChange
         customerCallback = onCustomerUpdate
         voucherOrderCallback = onVoucherOrderUpdate
+        paymentSuccessCallback = onPaymentSuccess
 
         withContext(Dispatchers.IO) {
             try {
@@ -91,7 +94,7 @@ class OrderWebSocketClient {
             delay(reconnectDelay)
             messageCallback?.let { callback ->
                 connectionCallback?.let { connCallback ->
-                    connect(callback, connCallback, customerCallback, voucherOrderCallback)
+                    connect(callback, connCallback, customerCallback, voucherOrderCallback, paymentSuccessCallback)
                 }
             }
         }
@@ -105,7 +108,7 @@ class OrderWebSocketClient {
             "/topic/voucher-order-update" to ::parseVoucherOrderUpdate
         )
 
-        Log.d(TAG, "🔄 Starting topic subscriptions...")
+        Log.d(TAG, "📡 Starting topic subscriptions...")
 
         topics.forEach { (topic, handler) ->
             try {
@@ -189,17 +192,35 @@ class OrderWebSocketClient {
 
     private fun parsePaymentSuccess(message: String) {
         try {
-            Log.d(TAG, "💳 Processing payment-success:")
+            Log.d(TAG, "💳 ============ PAYMENT SUCCESS PROCESSING ============")
             Log.d(TAG, "📄 Message length: ${message.length}")
+            Log.d(TAG, "📄 Full message: $message")
 
-            val info = gson.fromJson(message, Map::class.java)
-            val order = gson.fromJson(gson.toJson(info["hoaDon"]), HoaDonDetailResponse::class.java)
+            val paymentInfo = gson.fromJson(message, PaymentSuccessInfo::class.java)
 
-            Log.d(TAG, "✅ Payment success for order: ${order.id}")
-            messageCallback?.invoke(listOf(order), false)
+            Log.d(TAG, "🔍 Payment Success Details:")
+            Log.d(TAG, "   - Order ID: ${paymentInfo.hoaDonId}")
+            Log.d(TAG, "   - Action: ${paymentInfo.action}")
+            Log.d(TAG, "   - Order Code: ${paymentInfo.hoaDon.ma}")
+            Log.d(TAG, "   - Customer: ${paymentInfo.hoaDon.tenKhachHang}")
+            Log.d(TAG, "   - Total Amount: ${paymentInfo.hoaDon.tongTien}")
+            Log.d(TAG, "   - Status: ${paymentInfo.hoaDon.trangThai}")
+            Log.d(TAG, "   - Timestamp: ${paymentInfo.timestamp}")
+
+            // Gọi callback để thông báo payment success và reset app
+            paymentSuccessCallback?.let { callback ->
+                Log.d(TAG, "🔄 Invoking payment success callback to reset app state...")
+                callback.invoke(paymentInfo)
+                Log.d(TAG, "✅ Payment success callback invoked successfully")
+            } ?: run {
+                Log.w(TAG, "⚠️ Payment success callback is NULL!")
+            }
+
+            Log.d(TAG, "================ PAYMENT SUCCESS COMPLETED ================")
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Parse payment success error", e)
+            Log.e(TAG, "❌ Parse payment success error: ${e.message}", e)
+            Log.e(TAG, "Failed message: $message")
         }
     }
 
