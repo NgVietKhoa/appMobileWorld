@@ -20,6 +20,7 @@ class OrderWebSocketClient {
     private var connectionCallback: ((Boolean) -> Unit)? = null
     private var voucherOrderCallback: ((VoucherOrderUpdateResponse) -> Unit)? = null
     private var paymentSuccessCallback: ((PaymentSuccessInfo) -> Unit)? = null
+    private var orderCancelledCallback: ((OrderCancelledInfo) -> Unit)? = null
 
     private var isConnecting = false
     private var reconnectAttempts = 0
@@ -28,7 +29,7 @@ class OrderWebSocketClient {
 
     companion object {
         private const val TAG = "OrderWebSocketClient"
-        private const val WS_URL = "ws://192.168.1.6:8080/ws"
+        private const val WS_URL = "ws://192.168.1.33:8080/ws"
     }
 
     suspend fun connect(
@@ -36,7 +37,8 @@ class OrderWebSocketClient {
         onConnectionChange: (Boolean) -> Unit,
         onCustomerUpdate: ((KhachHang) -> Unit)? = null,
         onVoucherOrderUpdate: ((VoucherOrderUpdateResponse) -> Unit)? = null,
-        onPaymentSuccess: ((PaymentSuccessInfo) -> Unit)? = null
+        onPaymentSuccess: ((PaymentSuccessInfo) -> Unit)? = null,
+        onOrderCancelled: ((OrderCancelledInfo) -> Unit)? = null
     ) {
         if (isConnecting || isConnected()) return
 
@@ -46,6 +48,7 @@ class OrderWebSocketClient {
         customerCallback = onCustomerUpdate
         voucherOrderCallback = onVoucherOrderUpdate
         paymentSuccessCallback = onPaymentSuccess
+        orderCancelledCallback = onOrderCancelled
 
         withContext(Dispatchers.IO) {
             try {
@@ -94,7 +97,7 @@ class OrderWebSocketClient {
             delay(reconnectDelay)
             messageCallback?.let { callback ->
                 connectionCallback?.let { connCallback ->
-                    connect(callback, connCallback, customerCallback, voucherOrderCallback, paymentSuccessCallback)
+                    connect(callback, connCallback, customerCallback, voucherOrderCallback, paymentSuccessCallback, orderCancelledCallback)
                 }
             }
         }
@@ -105,7 +108,8 @@ class OrderWebSocketClient {
             "/topic/gio-hang-update" to ::parseGioHangUpdate,
             "/topic/payment-success" to ::parsePaymentSuccess,
             "/topic/khach-hang-update" to ::parseKhachHangUpdate,
-            "/topic/voucher-order-update" to ::parseVoucherOrderUpdate
+            "/topic/voucher-order-update" to ::parseVoucherOrderUpdate,
+            "/topic/hoa-don-cancelled" to ::parseOrderCancelled
         )
 
         Log.d(TAG, "📡 Starting topic subscriptions...")
@@ -140,7 +144,7 @@ class OrderWebSocketClient {
 
         Log.d(TAG, "🔗 Completed subscriptions to ${topics.size} topics")
 
-        Log.d(TAG, "🔍 WebSocket client status:")
+        Log.d(TAG, "📊 WebSocket client status:")
         Log.d(TAG, "   - Is connected: ${stompClient?.isConnected}")
         Log.d(TAG, "   - Active disposables: ${disposables.size()}")
 
@@ -156,6 +160,42 @@ class OrderWebSocketClient {
         }
     }
 
+    private fun parseOrderCancelled(message: String) {
+        try {
+            Log.d(TAG, "❌ ============ ORDER CANCELLED PROCESSING ============")
+            Log.d(TAG, "📄 Message length: ${message.length}")
+            Log.d(TAG, "📄 Full message: $message")
+
+            val cancelledInfo = gson.fromJson(message, OrderCancelledInfo::class.java)
+
+            Log.d(TAG, "🗑️ Order Cancelled Details:")
+            Log.d(TAG, "   - Order ID: ${cancelledInfo.hoaDonId}")
+            Log.d(TAG, "   - Action: ${cancelledInfo.action}")
+            Log.d(TAG, "   - Order Code: ${cancelledInfo.maHoaDon}")
+            Log.d(TAG, "   - Reason: ${cancelledInfo.lyDoHuy}")
+            Log.d(TAG, "   - Timestamp: ${cancelledInfo.timestamp}")
+            Log.d(TAG, "   - Message: ${cancelledInfo.message}")
+
+            if (cancelledInfo.isValidCancellation()) {
+                // Invoke callback to remove cancelled order from app state
+                orderCancelledCallback?.let { callback ->
+                    Log.d(TAG, "📄 Invoking order cancelled callback to remove order from app state...")
+                    callback.invoke(cancelledInfo)
+                    Log.d(TAG, "✅ Order cancelled callback invoked successfully")
+                } ?: run {
+                    Log.w(TAG, "⚠️ Order cancelled callback is NULL!")
+                }
+            } else {
+                Log.w(TAG, "⚠️ Invalid order cancellation data")
+            }
+
+            Log.d(TAG, "================ ORDER CANCELLED COMPLETED ================")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Parse order cancelled error: ${e.message}", e)
+            Log.e(TAG, "Failed message: $message")
+        }
+    }
 
     private fun parseGioHangUpdate(message: String) {
         try {
@@ -210,7 +250,7 @@ class OrderWebSocketClient {
 
             val paymentInfo = gson.fromJson(message, PaymentSuccessInfo::class.java)
 
-            Log.d(TAG, "🔍 Payment Success Details:")
+            Log.d(TAG, "📊 Payment Success Details:")
             Log.d(TAG, "   - Order ID: ${paymentInfo.hoaDonId}")
             Log.d(TAG, "   - Action: ${paymentInfo.action}")
             Log.d(TAG, "   - Order Code: ${paymentInfo.hoaDon.ma}")
@@ -221,7 +261,7 @@ class OrderWebSocketClient {
 
             // Gọi callback để thông báo payment success và reset app
             paymentSuccessCallback?.let { callback ->
-                Log.d(TAG, "🔄 Invoking payment success callback to reset app state...")
+                Log.d(TAG, "📄 Invoking payment success callback to reset app state...")
                 callback.invoke(paymentInfo)
                 Log.d(TAG, "✅ Payment success callback invoked successfully")
             } ?: run {
@@ -264,7 +304,7 @@ class OrderWebSocketClient {
                     Log.d(TAG, "   Customer object: ID=${customer.id}, Name=${customer.ten}, Phone=${customer.soDienThoai}")
 
                     customerCallback?.let { callback ->
-                        Log.d(TAG, "🔄 Invoking customer callback...")
+                        Log.d(TAG, "📄 Invoking customer callback...")
                         callback.invoke(customer)
                         Log.d(TAG, "✅ Customer callback invoked successfully")
                     } ?: run {
@@ -298,7 +338,7 @@ class OrderWebSocketClient {
                 Log.d(TAG, "✅ CUSTOMER UPDATE FROM LEGACY FORMAT SUCCESS!")
 
                 customerCallback?.let { callback ->
-                    Log.d(TAG, "🔄 Invoking customer callback (legacy)...")
+                    Log.d(TAG, "📄 Invoking customer callback (legacy)...")
                     callback.invoke(customer)
                     Log.d(TAG, "✅ Customer callback invoked successfully (legacy)")
                 } ?: run {

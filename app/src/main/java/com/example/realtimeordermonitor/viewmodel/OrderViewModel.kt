@@ -49,13 +49,47 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
                     },
                     onCustomerUpdate = ::handleCustomerUpdate,
                     onVoucherOrderUpdate = ::handleVoucherOrderUpdate,
-                    onPaymentSuccess = ::handlePaymentSuccess // Thêm callback cho payment success
+                    onPaymentSuccess = ::handlePaymentSuccess,
+                    onOrderCancelled = ::handleOrderCancelled
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Connection error", e)
                 _uiState.value = _uiState.value.copy(isConnected = false)
             }
         }
+    }
+
+    private fun handleOrderCancelled(cancelledInfo: OrderCancelledInfo) {
+        Log.d(TAG, "❌ ============ ORDER CANCELLED RECEIVED ============")
+        Log.d(TAG, "   - Order ID: ${cancelledInfo.hoaDonId}")
+        Log.d(TAG, "   - Action: ${cancelledInfo.action}")
+        Log.d(TAG, "   - Order Code: ${cancelledInfo.maHoaDon}")
+        Log.d(TAG, "   - Reason: ${cancelledInfo.lyDoHuy}")
+        Log.d(TAG, "   - Message: ${cancelledInfo.message}")
+
+        val currentState = _uiState.value
+
+        // Tìm và xóa hóa đơn đã hủy
+        val updatedOrders = currentState.orders.filter { it.id != cancelledInfo.hoaDonId }
+
+        // Xóa thông tin voucher liên quan đến hóa đơn này
+        val updatedVoucherInfo = currentState.orderVoucherInfo.filterKeys { it != cancelledInfo.hoaDonId }
+
+        // Xóa thông tin customer pending nếu có
+        pendingCustomerUpdates.remove(cancelledInfo.hoaDonId)
+
+        // Cập nhật UI state
+        _uiState.value = currentState.copy(
+            orders = updatedOrders,
+            orderVoucherInfo = updatedVoucherInfo,
+            lastUpdated = System.currentTimeMillis()
+        )
+
+        Log.d(TAG, "✅ Order cancelled processed:")
+        Log.d(TAG, "   - Removed cancelled order ${cancelledInfo.hoaDonId} (${cancelledInfo.maHoaDon})")
+        Log.d(TAG, "   - Remaining orders: ${updatedOrders.size}")
+        Log.d(TAG, "   - Remaining vouchers: ${updatedVoucherInfo.size}")
+        Log.d(TAG, "================ ORDER CANCELLED COMPLETED ================")
     }
 
     private fun handlePaymentSuccess(paymentInfo: PaymentSuccessInfo) {
@@ -136,7 +170,7 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
         val currentState = _uiState.value
 
         val ordersWithCustomerInfo = orders.map { order ->
-            Log.d(TAG, "🔍 Processing order ${order.id}:")
+            Log.d(TAG, "📊 Processing order ${order.id}:")
             Log.d(TAG, "   - Original customer: '${order.tenKhachHang}' (ID: ${order.khachHangId})")
             Log.d(TAG, "   - Original phone: '${order.soDienThoaiKhachHang}'")
             Log.d(TAG, "   - Original email: '${order.emailKhachHang}'")

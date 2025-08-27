@@ -142,7 +142,7 @@ data class VoucherOrderUpdateResponse(
             val formatter = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("vi", "VN"))
             formatter.format(giaTriGiam.toLong())
         } catch (e: Exception) {
-            "${giaTriGiam.toLong()} VNĐ"
+            "${giaTriGiam.toLong()} VNÄ"
         }
     }
 }
@@ -252,4 +252,31 @@ data class PaymentSuccessOrder(
     fun isPaymentCompleted(): Boolean = trangThai == 3 // Assuming 3 is completed status
 
     fun isValidPayment(): Boolean = id > 0 && tongTien > 0
+}
+
+// NEW: Add Order Cancelled data model
+@Parcelize
+data class OrderCancelledInfo(
+    @SerializedName("action")
+    val action: String,
+
+    @SerializedName("hoaDonId")
+    val hoaDonId: Int,
+
+    @SerializedName("maHoaDon")
+    val maHoaDon: String,
+
+    @SerializedName("lyDoHuy")
+    val lyDoHuy: String,
+
+    @SerializedName("timestamp")
+    val timestamp: String,
+
+    @SerializedName("message")
+    val message: String
+) : Parcelable {
+
+    fun isValidCancellation(): Boolean {
+        return action == "HOA_DON_CANCELLED" && hoaDonId > 0 && maHoaDon.isNotEmpty()
+    }
 }
