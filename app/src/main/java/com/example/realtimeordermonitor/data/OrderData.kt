@@ -77,7 +77,8 @@ data class HoaDonDetailResponse(
 
     fun getEffectiveDiscountAmount(voucherOrderInfo: VoucherOrderUpdateResponse?): Long {
         return if (voucherOrderInfo?.isApplied() == true) {
-            voucherOrderInfo.giaTriGiam.toLong()
+            // Use the voucher's method to calculate discount based on percentage or fixed amount
+            voucherOrderInfo.calculateDiscountAmount(getCalculatedTotal())
         } else {
             0L
         }

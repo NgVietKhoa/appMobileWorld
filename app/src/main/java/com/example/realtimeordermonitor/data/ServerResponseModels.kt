@@ -39,7 +39,9 @@ data class GioHangUpdateMessage(
     @SerializedName("maPhieuGiamGia")
     val maPhieuGiamGia: String? = null,
     @SerializedName("soTienGiam")
-    val soTienGiam: Double? = null
+    val soTienGiam: Double? = null,
+    @SerializedName("phanTramGiamGia")
+    val phanTramGiamGia: Double? = null
 ) : Parcelable {
 
     fun toKhachHang(): KhachHang? = null
@@ -49,6 +51,10 @@ data class GioHangUpdateMessage(
     fun hasVoucherInfo(): Boolean {
         return idPhieuGiamGia != null && idPhieuGiamGia > 0 && !maPhieuGiamGia.isNullOrEmpty()
     }
+
+    fun isPercentageDiscount(): Boolean = phanTramGiamGia != null && phanTramGiamGia > 0
+
+    fun isFixedAmountDiscount(): Boolean = soTienGiam != null && soTienGiam > 0
 }
 
 @Parcelize
@@ -126,6 +132,8 @@ data class VoucherOrderUpdateResponse(
     val tenPhieu: String = "",
     @SerializedName("giaTriGiam")
     val giaTriGiam: Double = 0.0,
+    @SerializedName("phanTramGiamGia")
+    val phanTramGiamGia: Double? = null,
     @SerializedName("soLuongDung")
     val soLuongDung: Int = 0,
     @SerializedName("trangThai")
@@ -137,12 +145,34 @@ data class VoucherOrderUpdateResponse(
     fun isApplied(): Boolean = action == "VOUCHER_USED" || action == "VOUCHER_APPLIED"
     fun isRemoved(): Boolean = action == "VOUCHER_REMOVED" || action == "VOUCHER_CANCELLED"
 
+    fun isPercentageDiscount(): Boolean = phanTramGiamGia != null && phanTramGiamGia > 0
+
+    fun isFixedAmountDiscount(): Boolean = !isPercentageDiscount() && giaTriGiam > 0
+
     fun getFormattedValue(): String {
         return try {
-            val formatter = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("vi", "VN"))
-            formatter.format(giaTriGiam.toLong())
+            if (isPercentageDiscount()) {
+                "${phanTramGiamGia!!.toInt()}%"
+            } else {
+                val formatter = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("vi", "VN"))
+                formatter.format(giaTriGiam.toLong())
+            }
         } catch (e: Exception) {
-            "${giaTriGiam.toLong()} VNÄ"
+            if (isPercentageDiscount()) {
+                "${phanTramGiamGia!!.toInt()}%"
+            } else {
+                "${giaTriGiam.toLong()} VNĐ"
+            }
+        }
+    }
+
+    fun calculateDiscountAmount(totalAmount: Long): Long {
+        return if (isPercentageDiscount()) {
+            // Calculate percentage discount
+            ((totalAmount * (phanTramGiamGia!! / 100.0)).toLong())
+        } else {
+            // Fixed amount discount
+            giaTriGiam.toLong()
         }
     }
 }

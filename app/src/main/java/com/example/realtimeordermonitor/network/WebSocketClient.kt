@@ -29,7 +29,7 @@ class OrderWebSocketClient {
 
     companion object {
         private const val TAG = "OrderWebSocketClient"
-        private const val WS_URL = "ws://192.168.1.33:8080/ws"
+        private const val WS_URL = "ws://192.168.1.6:8080/ws"
     }
 
     suspend fun connect(
@@ -65,6 +65,7 @@ class OrderWebSocketClient {
                                 connectionCallback?.invoke(true)
                                 subscribeTopics()
                             }
+
                             LifecycleEvent.Type.ERROR, LifecycleEvent.Type.CLOSED -> {
                                 isConnecting = false
                                 Log.w(TAG, "❌ WebSocket disconnected: ${event.type}")
@@ -74,6 +75,7 @@ class OrderWebSocketClient {
                                 connectionCallback?.invoke(false)
                                 if (reconnectAttempts < maxReconnectAttempts) scheduleReconnect()
                             }
+
                             else -> {
                                 Log.d(TAG, "WebSocket lifecycle event: ${event.type}")
                             }
@@ -97,7 +99,14 @@ class OrderWebSocketClient {
             delay(reconnectDelay)
             messageCallback?.let { callback ->
                 connectionCallback?.let { connCallback ->
-                    connect(callback, connCallback, customerCallback, voucherOrderCallback, paymentSuccessCallback, orderCancelledCallback)
+                    connect(
+                        callback,
+                        connCallback,
+                        customerCallback,
+                        voucherOrderCallback,
+                        paymentSuccessCallback,
+                        orderCancelledCallback
+                    )
                 }
             }
         }
@@ -179,7 +188,10 @@ class OrderWebSocketClient {
             if (cancelledInfo.isValidCancellation()) {
                 // Invoke callback to remove cancelled order from app state
                 orderCancelledCallback?.let { callback ->
-                    Log.d(TAG, "📄 Invoking order cancelled callback to remove order from app state...")
+                    Log.d(
+                        TAG,
+                        "📄 Invoking order cancelled callback to remove order from app state..."
+                    )
                     callback.invoke(cancelledInfo)
                     Log.d(TAG, "✅ Order cancelled callback invoked successfully")
                 } ?: run {
@@ -221,13 +233,19 @@ class OrderWebSocketClient {
             }
 
             if (update.hasVoucherInfo()) {
-                Log.d(TAG, "🎫 Voucher info from cart update: ${update.maPhieuGiamGia} - Amount: ${update.soTienGiam}")
+                Log.d(TAG, "🎫 Voucher info from cart update:")
+                Log.d(TAG, "   - Code: ${update.maPhieuGiamGia}")
+                Log.d(TAG, "   - Fixed amount: ${update.soTienGiam}")
+                Log.d(TAG, "   - Percentage: ${update.phanTramGiamGia}%")
+                Log.d(TAG, "   - Is percentage discount: ${update.isPercentageDiscount()}")
+
                 val voucherUpdate = VoucherOrderUpdateResponse(
                     action = "VOUCHER_APPLIED",
                     hoaDonId = update.hoaDonId,
                     phieuGiamGiaId = update.idPhieuGiamGia ?: 0,
                     maPhieu = update.maPhieuGiamGia ?: "",
                     giaTriGiam = update.soTienGiam ?: 0.0,
+                    phanTramGiamGia = update.phanTramGiamGia,
                     trangThai = true,
                     timestamp = update.timestamp
                 )
@@ -301,7 +319,10 @@ class OrderWebSocketClient {
                 if (customerUpdate.hasValidData()) {
                     val customer = customerUpdate.toKhachHang()
                     Log.d(TAG, "✅ CUSTOMER UPDATE FROM DEDICATED TOPIC SUCCESS!")
-                    Log.d(TAG, "   Customer object: ID=${customer.id}, Name=${customer.ten}, Phone=${customer.soDienThoai}")
+                    Log.d(
+                        TAG,
+                        "   Customer object: ID=${customer.id}, Name=${customer.ten}, Phone=${customer.soDienThoai}"
+                    )
 
                     customerCallback?.let { callback ->
                         Log.d(TAG, "📄 Invoking customer callback...")
@@ -360,7 +381,13 @@ class OrderWebSocketClient {
             Log.d(TAG, "📄 Message length: ${message.length}")
 
             val voucherOrderUpdate = gson.fromJson(message, VoucherOrderUpdateResponse::class.java)
-            Log.d(TAG, "✅ Voucher update: ${voucherOrderUpdate.maPhieu} for order ${voucherOrderUpdate.hoaDonId}")
+            Log.d(
+                TAG,
+                "✅ Voucher update: ${voucherOrderUpdate.maPhieu} for order ${voucherOrderUpdate.hoaDonId}"
+            )
+            Log.d(TAG, "   - Fixed amount: ${voucherOrderUpdate.giaTriGiam}")
+            Log.d(TAG, "   - Percentage: ${voucherOrderUpdate.phanTramGiamGia}%")
+            Log.d(TAG, "   - Is percentage discount: ${voucherOrderUpdate.isPercentageDiscount()}")
 
             voucherOrderCallback?.invoke(voucherOrderUpdate)
 
@@ -416,6 +443,7 @@ class OrderWebSocketClient {
                     phieuGiamGiaId = update.idPhieuGiamGia ?: 0,
                     maPhieu = update.maPhieuGiamGia ?: "",
                     giaTriGiam = 0.0, // Set to 0 when removed
+                    phanTramGiamGia = null,
                     trangThai = false,
                     timestamp = update.timestamp
                 )
@@ -424,13 +452,19 @@ class OrderWebSocketClient {
         } else {
             // Only process voucher info if quantity > 0
             if (update.hasVoucherInfo()) {
-                Log.d(TAG, "🎫 Voucher info from cart update: ${update.maPhieuGiamGia} - Amount: ${update.soTienGiam}")
+                Log.d(TAG, "🎫 Voucher info from cart update:")
+                Log.d(TAG, "   - Code: ${update.maPhieuGiamGia}")
+                Log.d(TAG, "   - Fixed amount: ${update.soTienGiam}")
+                Log.d(TAG, "   - Percentage: ${update.phanTramGiamGia}%")
+                Log.d(TAG, "   - Is percentage discount: ${update.isPercentageDiscount()}")
+
                 val voucherUpdate = VoucherOrderUpdateResponse(
                     action = "VOUCHER_APPLIED",
                     hoaDonId = update.hoaDonId,
                     phieuGiamGiaId = update.idPhieuGiamGia ?: 0,
                     maPhieu = update.maPhieuGiamGia ?: "",
                     giaTriGiam = update.soTienGiam ?: 0.0,
+                    phanTramGiamGia = update.phanTramGiamGia,
                     trangThai = true,
                     timestamp = update.timestamp
                 )
@@ -445,10 +479,22 @@ class OrderWebSocketClient {
         val finalTotal = if (cartOriginalTotal > 0) cartOriginalTotal else calculatedTotal
         val finalAfterDiscount = cartTotal
 
-        // Clear voucher discount if total quantity is 0
-        val voucherDiscountAmount = if (shouldClearVoucher) 0L else (update.soTienGiam?.toLong() ?: 0L)
-        val discountAmount = if (shouldClearVoucher) 0L else maxOf(0L, finalTotal - finalAfterDiscount)
-        val effectiveDiscountAmount = if (voucherDiscountAmount > 0) voucherDiscountAmount else discountAmount
+        // Calculate discount amount considering percentage vs fixed amount
+        val voucherDiscountAmount = if (shouldClearVoucher) {
+            0L
+        } else if (update.isPercentageDiscount()) {
+            // Calculate percentage-based discount
+            val percentage = update.phanTramGiamGia!! / 100.0
+            (finalTotal * percentage).toLong()
+        } else {
+            // Fixed amount discount
+            update.soTienGiam?.toLong() ?: 0L
+        }
+
+        val discountAmount =
+            if (shouldClearVoucher) 0L else maxOf(0L, finalTotal - finalAfterDiscount)
+        val effectiveDiscountAmount =
+            if (voucherDiscountAmount > 0) voucherDiscountAmount else discountAmount
 
         // Log final product info with images
         Log.d(TAG, "📋 Final order products:")
@@ -467,7 +513,8 @@ class OrderWebSocketClient {
             tongTien = finalTotal,
             tongTienSauGiam = if (shouldClearVoucher) finalTotal else finalAfterDiscount, // No discount if qty = 0
             tienGiamGia = if (shouldClearVoucher) 0L else effectiveDiscountAmount, // Clear discount if qty = 0
-            maPhieuGiamGia = if (shouldClearVoucher) "" else (update.maPhieuGiamGia ?: ""), // Clear voucher code if qty = 0
+            maPhieuGiamGia = if (shouldClearVoucher) "" else (update.maPhieuGiamGia
+                ?: ""), // Clear voucher code if qty = 0
             ghiChu = "",
             trangThai = 0,
             trangThaiText = "Chờ xác nhận",

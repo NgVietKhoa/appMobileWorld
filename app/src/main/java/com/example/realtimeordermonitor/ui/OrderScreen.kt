@@ -363,17 +363,27 @@ private fun VoucherInfoSection(
                         color = Color(0xFF15803D),
                         fontWeight = FontWeight.Medium
                     )
+
+                    // Show voucher type and value
+                    val voucherTypeText = if (voucherInfo.isPercentageDiscount()) {
+                        "Giảm ${voucherInfo.phanTramGiamGia?.toInt()}% giá"
+                    } else {
+                        "Giảm cố định ${voucherInfo.giaTriGiam.toLong().toVNDCurrency()}"
+                    }
+
                     Text(
-                        "Voucher giảm giá",
+                        voucherTypeText,
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF15803D)
                     )
                 }
             }
 
+            // Show actual discount amount applied
+            val appliedDiscountAmount = voucherInfo.calculateDiscountAmount(order.getCalculatedTotal())
             Text(
-                "-${voucherInfo.getFormattedValue()}",
-                style = MaterialTheme.typography.bodySmall,
+                "-${appliedDiscountAmount.toVNDCurrency()}",
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color.Red,
                 fontWeight = FontWeight.Bold
             )
@@ -539,6 +549,15 @@ private fun PaymentSummarySection(
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFF64748B)
                     )
+
+                    // Add voucher details in smaller text
+                    if (voucherInfo.isPercentageDiscount()) {
+                        Text(
+                            " (${voucherInfo.phanTramGiamGia?.toInt()}%)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF64748B)
+                        )
+                    }
                 }
                 Text(
                     "-${discountAmount.toVNDCurrency()}",
